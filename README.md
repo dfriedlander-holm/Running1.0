@@ -38,3 +38,45 @@ Then open <http://localhost:8080>.
 ## Strava note
 
 This app is fully client-side and does not store your token. Use short-lived tokens and keep them private.
+
+## Strava 401 troubleshooting
+
+If the app shows a `401 Unauthorized` error:
+
+- Make sure you pasted an **access token** (not the OAuth authorization code).
+- Re-authenticate and generate a fresh token (Strava access tokens are short-lived).
+- Ensure your Strava app requested activity scopes (`activity:read` or `activity:read_all`).
+- You can paste either raw token text or `Bearer <token>`; the app now normalizes both.
+
+
+
+## GitHub PR conflict fix (`This branch has conflicts that must be resolved`)
+
+If GitHub shows this, it means your PR branch is behind the base branch and must be updated.
+
+```bash
+git checkout work
+git fetch origin
+git rebase origin/main
+# resolve conflicts in files Git reports
+# then for each resolved file:
+git add <file>
+git rebase --continue
+# when rebase completes
+git push --force-with-lease origin work
+```
+
+If you prefer merge instead of rebase:
+
+```bash
+git checkout work
+git fetch origin
+git merge origin/main
+# resolve conflicts, then:
+git add <file>
+git commit
+git push origin work
+```
+
+Tip: if your PR is based on the wrong target branch, change the PR base branch in GitHub first.
+

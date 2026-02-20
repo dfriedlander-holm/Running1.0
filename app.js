@@ -12,6 +12,31 @@ const fmtPace = (minPerMi) => {
   return `${mins}:${secs}/mi`;
 };
 
+
+function setStravaStatus(message, kind = "") {
+  const el = document.getElementById("stravaStatus");
+  el.className = `hint ${kind}`.trim();
+  el.textContent = message;
+}
+
+function normalizeStravaToken(rawToken) {
+  const cleaned = (rawToken || "").trim();
+  if (!cleaned) return "";
+  return cleaned.replace(/^bearer\s+/i, "").trim();
+}
+
+function createStrava401Help(debugText = "") {
+  return [
+    "Strava returned 401 (Unauthorized).",
+    "Check that you pasted an access token (not an authorization code).",
+    "Your token may be expired; Strava access tokens are short-lived.",
+    "Your app must request activity scopes (e.g. activity:read_all).",
+    debugText ? `API details: ${debugText}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function parseDate(d) {
   return new Date(`${d}T00:00:00`);
 }
@@ -28,6 +53,42 @@ function daysInMonth(year, month) {
 
 async function fetchStravaRuns(token) {
   const runs = [];
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const athleteRes = await fetch("https://www.strava.com/api/v3/athlete", { headers });
+  if (!athleteRes.ok) {
+    let debugText = "";
+    try {
+      const errJson = await athleteRes.json();
+      debugText = errJson?.message || JSON.stringify(errJson);
+    } catch (_err) {
+      debugText = `status=${athleteRes.status}`;
+    }
+
+    if (athleteRes.status === 401) {
+      throw new Error(createStrava401Help(debugText));
+    }
+    throw new Error(`Strava athlete check failed (${athleteRes.status}): ${debugText}`);
+  }
+
+  for (let page = 1; page <= 8; page += 1) {
+    const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&page=${page}`, { headers });
+
+    if (!res.ok) {
+      let debugText = "";
+      try {
+        const errJson = await res.json();
+        debugText = errJson?.message || JSON.stringify(errJson);
+      } catch (_err) {
+        debugText = `status=${res.status}`;
+      }
+
+      if (res.status === 401) {
+        throw new Error(createStrava401Help(debugText));
+      }
+      throw new Error(`Strava request failed (${res.status}): ${debugText}`);
+    }
+
   for (let page = 1; page <= 8; page += 1) {
     const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&page=${page}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -302,12 +363,28 @@ function refresh() {
 }
 
 document.getElementById("loadStravaBtn").addEventListener("click", async () => {
+  const rawToken = document.getElementById("stravaToken").value;
+  const token = normalizeStravaToken(rawToken);
+  if (!token) {
+    setStravaStatus("Add a Strava access token first.", "status-error");
+    return;
+  }
+
+  if (rawToken.trim().toLowerCase().startsWith("bearer ")) {
+    setStravaStatus("Removed optional 'Bearer' prefix from pasted token.");
+  } else {
+    setStravaStatus("Loading runs from Strava...");
+  }
+
   const token = document.getElementById("stravaToken").value.trim();
   if (!token) return alert("Add a Strava token first");
   try {
     const runs = await fetchStravaRuns(token);
     state.runs = runs.sort((a, b) => parseDate(a.date) - parseDate(b.date));
     refresh();
+    setStravaStatus(`Loaded ${runs.length} runs from Strava.`, "status-success");
+  } catch (err) {
+    setStravaStatus(err.message, "status-error");
   } catch (err) {
     alert(err.message);
   }

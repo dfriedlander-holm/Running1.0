@@ -113,3 +113,11 @@ td:first-child {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1rem;
 }
+
+.status-error {
+  color: #fca5a5;
+}
+
+.status-success {
+  color: #86efac;
+}
