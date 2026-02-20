@@ -19,7 +19,7 @@
         <div class="grid two">
           <label>
             Strava access token
-            <input id="stravaToken" type="password" placeholder="Paste access token" />
+            <input id="stravaToken" type="password" placeholder="Paste temporary token" />
           </label>
           <div class="actions">
             <button id="loadStravaBtn">Load from Strava</button>
@@ -27,24 +27,22 @@
           </div>
         </div>
         <p class="hint">
-          Paste an <strong>access token</strong> (raw token or <code>Bearer &lt;token&gt;</code>). If this still 401s, verify your
-          app's granted scopes include <code>activity:read</code> or <code>activity:read_all</code>.
-        </p>
-
-        <div class="grid two">
-          <label>
-            Google Sheets link (CSV fallback)
-            <input id="sheetUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." />
-          </label>
-          <div class="actions">
-            <button id="loadSheetBtn">Load from Google Sheets</button>
-            <div id="sheetStatus" class="hint"></div>
+          Paste a short-lived <strong>access token</strong> (not an authorization code). If you see a 401, the token is usually expired, missing run/activity scopes, or copied incorrectly. Tokens are never stored.
           </div>
         </div>
         <p class="hint">
-          Share your sheet as "Anyone with the link can view". Required columns: <code>date</code>,
-          <code>distance_mi</code> (or <code>distance_km</code>/<code>distance_m</code>), optional <code>moving_time_sec</code>.
+          Create a token in your own Strava OAuth app and paste it here. Tokens are never stored.
         </p>
+        <div class="grid two">
+          <label>
+            Import CSV fallback
+            <input id="csvInput" type="file" accept=".csv" />
+          </label>
+          <p class="hint">
+            CSV columns accepted: <code>date</code>, <code>distance_mi</code> (or meters/km), and optional
+            <code>moving_time_sec</code>.
+          </p>
+        </div>
       </section>
 
       <section class="panel">

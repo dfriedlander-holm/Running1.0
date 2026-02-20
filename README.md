@@ -5,7 +5,7 @@ Running1.0 is a static running analytics dashboard that you can host on GitHub P
 ## What it does
 
 - Pulls your run activities from Strava (using a pasted temporary access token).
-- Supports Google Sheets link import from your spreadsheet as a fallback.
+- Supports CSV import from your spreadsheet as a fallback.
 - Calculates:
   - monthly mileage
   - monthly remaining mileage (for two adjustable daily pace targets)
@@ -43,13 +43,40 @@ This app is fully client-side and does not store your token. Use short-lived tok
 
 If the app shows a `401 Unauthorized` error:
 
-- Paste an **access token** (not an OAuth authorization code or refresh token).
-- Confirm your Strava app auth included activity scopes (`activity:read` or `activity:read_all`).
-- The dashboard accepts either `Bearer <token>` or raw token text and normalizes both.
+- Make sure you pasted an **access token** (not the OAuth authorization code).
+- Re-authenticate and generate a fresh token (Strava access tokens are short-lived).
+- Ensure your Strava app requested activity scopes (`activity:read` or `activity:read_all`).
+- You can paste either raw token text or `Bearer <token>`; the app now normalizes both.
 
-## Google Sheets import
 
-- Paste your Google Sheets URL into the dashboard and click **Load from Google Sheets**.
-- Share the sheet as **Anyone with the link can view**.
-- Required columns: `date`, `distance_mi` (or `distance_km`/`distance_m`), optional `moving_time_sec`.
+
+## GitHub PR conflict fix (`This branch has conflicts that must be resolved`)
+
+If GitHub shows this, it means your PR branch is behind the base branch and must be updated.
+
+```bash
+git checkout work
+git fetch origin
+git rebase origin/main
+# resolve conflicts in files Git reports
+# then for each resolved file:
+git add <file>
+git rebase --continue
+# when rebase completes
+git push --force-with-lease origin work
+```
+
+If you prefer merge instead of rebase:
+
+```bash
+git checkout work
+git fetch origin
+git merge origin/main
+# resolve conflicts, then:
+git add <file>
+git commit
+git push origin work
+```
+
+Tip: if your PR is based on the wrong target branch, change the PR base branch in GitHub first.
 

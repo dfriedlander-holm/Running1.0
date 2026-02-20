@@ -12,8 +12,9 @@ const fmtPace = (minPerMi) => {
   return `${mins}:${secs}/mi`;
 };
 
-function setStatus(id, message, kind = "") {
-  const el = document.getElementById(id);
+
+function setStravaStatus(message, kind = "") {
+  const el = document.getElementById("stravaStatus");
   el.className = `hint ${kind}`.trim();
   el.textContent = message;
 }
@@ -21,22 +22,19 @@ function setStatus(id, message, kind = "") {
 function normalizeStravaToken(rawToken) {
   const cleaned = (rawToken || "").trim();
   if (!cleaned) return "";
-  return cleaned.replace(/^bearer\s+/i, "").replace(/^access_token=/i, "").trim();
+  return cleaned.replace(/^bearer\s+/i, "").trim();
 }
 
-function formatStravaError(status, payload) {
-  const details = payload?.message || payload?.errors?.[0]?.code || JSON.stringify(payload || {});
-  if (status === 401) {
-    return [
-      "Strava returned 401 (Unauthorized).",
-      "Use an access token (not authorization code or refresh token).",
-      "Confirm your app authorized activity:read or activity:read_all.",
-      details ? `API details: ${details}` : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-  }
-  return `Strava request failed (${status})${details ? `: ${details}` : ""}`;
+function createStrava401Help(debugText = "") {
+  return [
+    "Strava returned 401 (Unauthorized).",
+    "Check that you pasted an access token (not an authorization code).",
+    "Your token may be expired; Strava access tokens are short-lived.",
+    "Your app must request activity scopes (e.g. activity:read_all).",
+    debugText ? `API details: ${debugText}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function parseDate(d) {
@@ -45,7 +43,8 @@ function parseDate(d) {
 
 function dayOfYear(date) {
   const start = new Date(date.getFullYear(), 0, 0);
-  return Math.floor((date - start) / 86400000);
+  const diff = date - start;
+  return Math.floor(diff / 86400000);
 }
 
 function daysInMonth(year, month) {
@@ -56,18 +55,45 @@ async function fetchStravaRuns(token) {
   const runs = [];
   const headers = { Authorization: `Bearer ${token}` };
 
-  for (let page = 1; page <= 8; page += 1) {
-    const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&page=${page}`, { headers });
-    if (!res.ok) {
-      let payload = null;
-      try {
-        payload = await res.json();
-      } catch (_err) {
-        payload = null;
-      }
-      throw new Error(formatStravaError(res.status, payload));
+  const athleteRes = await fetch("https://www.strava.com/api/v3/athlete", { headers });
+  if (!athleteRes.ok) {
+    let debugText = "";
+    try {
+      const errJson = await athleteRes.json();
+      debugText = errJson?.message || JSON.stringify(errJson);
+    } catch (_err) {
+      debugText = `status=${athleteRes.status}`;
     }
 
+    if (athleteRes.status === 401) {
+      throw new Error(createStrava401Help(debugText));
+    }
+    throw new Error(`Strava athlete check failed (${athleteRes.status}): ${debugText}`);
+  }
+
+  for (let page = 1; page <= 8; page += 1) {
+    const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&page=${page}`, { headers });
+
+    if (!res.ok) {
+      let debugText = "";
+      try {
+        const errJson = await res.json();
+        debugText = errJson?.message || JSON.stringify(errJson);
+      } catch (_err) {
+        debugText = `status=${res.status}`;
+      }
+
+      if (res.status === 401) {
+        throw new Error(createStrava401Help(debugText));
+      }
+      throw new Error(`Strava request failed (${res.status}): ${debugText}`);
+    }
+
+  for (let page = 1; page <= 8; page += 1) {
+    const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&page=${page}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Strava request failed: ${res.status}`);
     const data = await res.json();
     if (!data.length) break;
     data
@@ -81,7 +107,6 @@ async function fetchStravaRuns(token) {
         });
       });
   }
-
   return runs;
 }
 
@@ -95,7 +120,7 @@ function parseCsvRuns(text) {
   const mIdx = idx("distance_m");
   const secIdx = idx("moving_time_sec");
   if (dateIdx === -1 || (miIdx === -1 && kmIdx === -1 && mIdx === -1)) {
-    throw new Error("Sheet needs date and distance_mi (or distance_km/distance_m)");
+    throw new Error("CSV needs date and distance_mi (or distance_km/distance_m)");
   }
 
   return rows
@@ -114,32 +139,6 @@ function parseCsvRuns(text) {
     })
     .filter((r) => r.date && Number.isFinite(r.distanceMi) && r.distanceMi > 0)
     .sort((a, b) => parseDate(a.date) - parseDate(b.date));
-}
-
-function toGoogleSheetCsvUrl(sheetUrl) {
-  const parsed = new URL(sheetUrl);
-  if (!parsed.hostname.includes("docs.google.com") || !parsed.pathname.includes("/spreadsheets/d/")) {
-    throw new Error("Enter a valid Google Sheets URL.");
-  }
-
-  const match = parsed.pathname.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  if (!match) throw new Error("Could not detect sheet id from URL.");
-
-  const sheetId = match[1];
-  const hash = (parsed.hash || "").replace(/^#/, "");
-  const hashParams = new URLSearchParams(hash.replace(/^gid=/, "gid="));
-  const gid = parsed.searchParams.get("gid") || hashParams.get("gid") || "0";
-
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${encodeURIComponent(gid)}`;
-}
-
-async function fetchGoogleSheetRuns(sheetUrl) {
-  const csvUrl = toGoogleSheetCsvUrl(sheetUrl);
-  const res = await fetch(csvUrl);
-  if (!res.ok) {
-    throw new Error(`Google Sheets fetch failed (${res.status}). Make sure the sheet is shared for link viewing.`);
-  }
-  return parseCsvRuns(await res.text());
 }
 
 function sum(arr) {
@@ -168,6 +167,7 @@ function buildAnalytics(runs, paceA, paceB, predictorDistance) {
   const recentMiles = sum(recent.map((r) => r.distanceMi));
   const recentSecs = sum(recent.map((r) => r.movingSec));
   const recentPace = recentMiles > 0 ? recentSecs / 60 / recentMiles : NaN;
+
   const predictedMinutes = recentPace * predictorDistance;
 
   const last7Start = new Date(now);
@@ -211,7 +211,9 @@ function buildAnalytics(runs, paceA, paceB, predictorDistance) {
     count: yearRuns.filter((r) => r.distanceMi >= min && r.distanceMi < bins[i + 1]).length,
   }));
 
-  const cumulativeMiles = sum(yearRuns.filter((r) => dayOfYear(parseDate(r.date)) <= doy).map((r) => r.distanceMi));
+  const cumulativeMiles = sum(
+    yearRuns.filter((r) => dayOfYear(parseDate(r.date)) <= doy).map((r) => r.distanceMi)
+  );
 
   const thisWeekStart = new Date(now);
   thisWeekStart.setDate(now.getDate() - now.getDay());
@@ -227,6 +229,8 @@ function buildAnalytics(runs, paceA, paceB, predictorDistance) {
   const weeksLeft = Math.max(1, Math.ceil((new Date(year, 11, 31) - now) / 604800000));
 
   return {
+    year,
+    month,
     monthlyMileage,
     annualMileage,
     monthlyTargetA,
@@ -234,6 +238,7 @@ function buildAnalytics(runs, paceA, paceB, predictorDistance) {
     annualTargetA,
     annualTargetB,
     miles7d,
+    recentPace,
     predictedMinutes,
     monthlyBuckets,
     rollingSeries,
@@ -261,9 +266,10 @@ function renderMetrics(a) {
     ["Year complete (B)", `${((a.annualMileage / a.annualTargetB) * 100 || 0).toFixed(1)}%`],
     ["Predicted time", `${Math.floor(a.predictedMinutes)}m ${Math.round((a.predictedMinutes % 1) * 60)}s`],
   ];
-
   document.getElementById("metrics").innerHTML = cards
-    .map(([label, value]) => `<div class="metric"><div class="label">${label}</div><div class="value">${value}</div></div>`)
+    .map(
+      ([label, value]) => `<div class="metric"><div class="label">${label}</div><div class="value">${value}</div></div>`
+    )
     .join("");
 }
 
@@ -275,7 +281,6 @@ function renderWeeklyBreakdown(a) {
     const thisWeekRemaining = Math.max(0, thisWeekTarget - a.thisWeekMiles);
     return `<tr><td>${name}</td><td>${fmtMiles(thisWeekRemaining)}</td><td>${fmtMiles(requiredWeekly)}</td><td>${a.weeksLeft}</td></tr>`;
   };
-
   document.getElementById("weeklyBreakdown").innerHTML = `
     <table>
       <thead><tr><th>Target</th><th>This week remaining</th><th>Avg weekly needed rest of year</th><th>Weeks left</th></tr></thead>
@@ -292,20 +297,26 @@ function renderMonthlyComparison(a) {
     .map((b, i, arr) => {
       const prev = i > 0 ? arr[i - 1].miles : 0;
       const delta = b.miles - prev;
-      return `<tr><td>${monthNames[b.month]}</td><td>${fmtMiles(b.miles)}</td><td>${delta >= 0 ? "+" : ""}${delta.toFixed(1)}</td></tr>`;
+      return `<tr><td>${monthNames[b.month]}</td><td>${fmtMiles(b.miles)}</td><td>${delta >= 0 ? "+" : ""}${delta.toFixed(
+        1
+      )}</td></tr>`;
     })
     .join("");
-  document.getElementById("monthlyComparison").innerHTML =
-    `<table><thead><tr><th>Month</th><th>Mileage</th><th>Vs prior month</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById("monthlyComparison").innerHTML = `
+    <table><thead><tr><th>Month</th><th>Mileage</th><th>Vs prior month</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function renderPaceAnalysis(a) {
   const yearAvgPace = sum(state.runs.map((r) => r.movingSec)) / 60 / (sum(state.runs.map((r) => r.distanceMi)) || NaN);
-  const monthly = a.monthlyBuckets.map((m) => `<tr><td>${m.month + 1}</td><td>${fmtPace(m.pace)}</td></tr>`).join("");
+  const monthly = a.monthlyBuckets
+    .map((m) => `<tr><td>${m.month + 1}</td><td>${fmtPace(m.pace)}</td></tr>`)
+    .join("");
   const recentRuns = [...state.runs]
     .sort((x, y) => parseDate(y.date) - parseDate(x.date))
     .slice(0, 8)
-    .map((r) => `<tr><td>${r.date}</td><td>${fmtMiles(r.distanceMi)}</td><td>${fmtPace(r.movingSec / 60 / r.distanceMi)}</td></tr>`)
+    .map(
+      (r) => `<tr><td>${r.date}</td><td>${fmtMiles(r.distanceMi)}</td><td>${fmtPace(r.movingSec / 60 / r.distanceMi)}</td></tr>`
+    )
     .join("");
 
   document.getElementById("paceAnalysis").innerHTML = `
@@ -355,36 +366,39 @@ document.getElementById("loadStravaBtn").addEventListener("click", async () => {
   const rawToken = document.getElementById("stravaToken").value;
   const token = normalizeStravaToken(rawToken);
   if (!token) {
-    setStatus("stravaStatus", "Add a Strava access token first.", "status-error");
+    setStravaStatus("Add a Strava access token first.", "status-error");
     return;
   }
 
-  setStatus("stravaStatus", "Loading runs from Strava...");
+  if (rawToken.trim().toLowerCase().startsWith("bearer ")) {
+    setStravaStatus("Removed optional 'Bearer' prefix from pasted token.");
+  } else {
+    setStravaStatus("Loading runs from Strava...");
+  }
+
+  const token = document.getElementById("stravaToken").value.trim();
+  if (!token) return alert("Add a Strava token first");
   try {
     const runs = await fetchStravaRuns(token);
     state.runs = runs.sort((a, b) => parseDate(a.date) - parseDate(b.date));
     refresh();
-    setStatus("stravaStatus", `Loaded ${runs.length} runs from Strava.`, "status-success");
+    setStravaStatus(`Loaded ${runs.length} runs from Strava.`, "status-success");
   } catch (err) {
-    setStatus("stravaStatus", err.message, "status-error");
+    setStravaStatus(err.message, "status-error");
+  } catch (err) {
+    alert(err.message);
   }
 });
 
-document.getElementById("loadSheetBtn").addEventListener("click", async () => {
-  const sheetUrl = document.getElementById("sheetUrl").value.trim();
-  if (!sheetUrl) {
-    setStatus("sheetStatus", "Paste a Google Sheets URL first.", "status-error");
-    return;
-  }
-
-  setStatus("sheetStatus", "Loading runs from Google Sheets...");
+document.getElementById("csvInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const text = await file.text();
   try {
-    const runs = await fetchGoogleSheetRuns(sheetUrl);
-    state.runs = runs;
+    state.runs = parseCsvRuns(text);
     refresh();
-    setStatus("sheetStatus", `Loaded ${runs.length} rows from Google Sheets.`, "status-success");
   } catch (err) {
-    setStatus("sheetStatus", err.message, "status-error");
+    alert(err.message);
   }
 });
 
