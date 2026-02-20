@@ -49,3 +49,34 @@ If the app shows a `401 Unauthorized` error:
 - You can paste either raw token text or `Bearer <token>`; the app now normalizes both.
 
 
+
+## GitHub PR conflict fix (`This branch has conflicts that must be resolved`)
+
+If GitHub shows this, it means your PR branch is behind the base branch and must be updated.
+
+```bash
+git checkout work
+git fetch origin
+git rebase origin/main
+# resolve conflicts in files Git reports
+# then for each resolved file:
+git add <file>
+git rebase --continue
+# when rebase completes
+git push --force-with-lease origin work
+```
+
+If you prefer merge instead of rebase:
+
+```bash
+git checkout work
+git fetch origin
+git merge origin/main
+# resolve conflicts, then:
+git add <file>
+git commit
+git push origin work
+```
+
+Tip: if your PR is based on the wrong target branch, change the PR base branch in GitHub first.
+
