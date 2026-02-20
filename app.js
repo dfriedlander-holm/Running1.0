@@ -25,10 +25,46 @@ function setSheetStatus(message, kind = "") {
   el.textContent = message;
 }
 
-function normalizeStravaToken(rawToken) {
+function parseStravaCredentialInput(rawToken) {
   const cleaned = (rawToken || "").trim();
-  if (!cleaned) return "";
-  return cleaned.replace(/^bearer\s+/i, "").trim();
+  if (!cleaned) return { token: "" };
+
+  const unprefixed = cleaned.replace(/^bearer\s+/i, "").trim();
+
+  if (unprefixed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(unprefixed);
+      if (parsed?.access_token) {
+        return { token: String(parsed.access_token).trim(), warning: "Extracted access_token from pasted JSON." };
+      }
+    } catch (_err) {}
+  }
+
+  try {
+    const maybeUrl = new URL(unprefixed);
+    const tokenFromUrl = maybeUrl.searchParams.get("access_token") || maybeUrl.hash.match(/access_token=([^&]+)/)?.[1];
+    if (tokenFromUrl) {
+      return { token: decodeURIComponent(tokenFromUrl).trim(), warning: "Extracted access_token from pasted URL." };
+    }
+
+    if (maybeUrl.searchParams.get("code")) {
+      return {
+        token: "",
+        error:
+          "That value is a Strava authorization code, not an access token. Exchange the code for an access token first, then paste the access token here.",
+      };
+    }
+  } catch (_err) {}
+
+  if (/(\?|&)code=/.test(unprefixed) || /^code=/.test(unprefixed)) {
+    return {
+      token: "",
+      error:
+        "That value is a Strava authorization code, not an access token. Exchange the code for an access token first, then paste the access token here.",
+    };
+  }
+
+  return { token: unprefixed };
 }
 
 function createStrava401Help(debugText = "") {
@@ -399,17 +435,28 @@ function refresh() {
 
 document.getElementById("loadStravaBtn").addEventListener("click", async () => {
   const rawToken = document.getElementById("stravaToken").value;
-  const token = normalizeStravaToken(rawToken);
+  const loadBtn = document.getElementById("loadStravaBtn");
+  const parsed = parseStravaCredentialInput(rawToken);
+  const token = parsed.token;
+
+  if (parsed.error) {
+    setStravaStatus(parsed.error, "status-error");
+    return;
+  }
+
   if (!token) {
     setStravaStatus("Add a Strava access token first.", "status-error");
     return;
   }
 
-  if (rawToken.trim().toLowerCase().startsWith("bearer ")) {
+  if (parsed.warning) {
+    setStravaStatus(parsed.warning);
+  } else if (rawToken.trim().toLowerCase().startsWith("bearer ")) {
     setStravaStatus("Removed optional 'Bearer' prefix from pasted token.");
-  } else {
-    setStravaStatus("Loading runs from Strava...");
   }
+
+  loadBtn.disabled = true;
+  setStravaStatus("Loading runs from Strava...");
 
   try {
     const runs = await fetchStravaRuns(token);
@@ -418,6 +465,8 @@ document.getElementById("loadStravaBtn").addEventListener("click", async () => {
     setStravaStatus(`Loaded ${runs.length} runs from Strava.`, "status-success");
   } catch (err) {
     setStravaStatus(err.message, "status-error");
+  } finally {
+    loadBtn.disabled = false;
   }
 });
 
