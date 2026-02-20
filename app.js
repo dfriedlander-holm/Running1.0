@@ -89,6 +89,11 @@ async function fetchStravaRuns(token) {
       throw new Error(`Strava request failed (${res.status}): ${debugText}`);
     }
 
+  for (let page = 1; page <= 8; page += 1) {
+    const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&page=${page}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Strava request failed: ${res.status}`);
     const data = await res.json();
     if (!data.length) break;
     data
@@ -371,6 +376,8 @@ document.getElementById("loadStravaBtn").addEventListener("click", async () => {
     setStravaStatus("Loading runs from Strava...");
   }
 
+  const token = document.getElementById("stravaToken").value.trim();
+  if (!token) return alert("Add a Strava token first");
   try {
     const runs = await fetchStravaRuns(token);
     state.runs = runs.sort((a, b) => parseDate(a.date) - parseDate(b.date));
@@ -378,6 +385,8 @@ document.getElementById("loadStravaBtn").addEventListener("click", async () => {
     setStravaStatus(`Loaded ${runs.length} runs from Strava.`, "status-success");
   } catch (err) {
     setStravaStatus(err.message, "status-error");
+  } catch (err) {
+    alert(err.message);
   }
 });
 
