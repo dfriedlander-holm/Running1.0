@@ -19,6 +19,12 @@ function setStravaStatus(message, kind = "") {
   el.textContent = message;
 }
 
+function setSheetStatus(message, kind = "") {
+  const el = document.getElementById("sheetStatus");
+  el.className = `hint ${kind}`.trim();
+  el.textContent = message;
+}
+
 function normalizeStravaToken(rawToken) {
   const cleaned = (rawToken || "").trim();
   if (!cleaned) return "";
@@ -51,11 +57,39 @@ function daysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate();
 }
 
+function googleSheetUrlToCsvUrl(rawUrl) {
+  const url = new URL((rawUrl || "").trim());
+  const host = url.hostname.replace(/^www\./, "");
+  if (host !== "docs.google.com") {
+    throw new Error("Use a docs.google.com Google Sheet URL.");
+  }
+
+  const path = url.pathname;
+  const match = path.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (!match) {
+    throw new Error("Could not find the Google Sheet ID in the URL.");
+  }
+
+  const sheetId = match[1];
+  const fromQuery = url.searchParams.get("gid");
+  const fromHash = new URLSearchParams(url.hash.replace(/^#/, "")).get("gid");
+  const gid = fromQuery || fromHash || "0";
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+}
+
 async function fetchStravaRuns(token) {
   const runs = [];
   const headers = { Authorization: `Bearer ${token}` };
 
-  const athleteRes = await fetch("https://www.strava.com/api/v3/athlete", { headers });
+  let athleteRes;
+  try {
+    athleteRes = await fetch("https://www.strava.com/api/v3/athlete", { headers });
+  } catch (_err) {
+    throw new Error(
+      "Unable to reach Strava API from this browser (network/CORS). If this is GitHub Pages, verify browser console for CORS blocks and that your token is current."
+    );
+  }
+
   if (!athleteRes.ok) {
     let debugText = "";
     try {
@@ -72,7 +106,14 @@ async function fetchStravaRuns(token) {
   }
 
   for (let page = 1; page <= 8; page += 1) {
-    const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&page=${page}`, { headers });
+    let res;
+    try {
+      res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&page=${page}`, { headers });
+    } catch (_err) {
+      throw new Error(
+        "Strava activities request failed before response (network/CORS). Confirm internet access and check browser console for blocked requests."
+      );
+    }
     if (!res.ok) {
       let debugText = "";
       try {
@@ -91,10 +132,10 @@ async function fetchStravaRuns(token) {
     const data = await res.json();
     if (!data.length) break;
     data
-      .filter((a) => a.type === "Run")
+      .filter((a) => a.sport_type === "Run" || a.type === "Run" || a.type === "VirtualRun")
       .forEach((a) => {
         runs.push({
-          date: a.start_date_local.slice(0, 10),
+          date: (a.start_date_local || a.start_date).slice(0, 10),
           distanceMi: a.distance / 1609.344,
           movingSec: a.moving_time ?? 0,
           name: a.name ?? "Run",
@@ -389,6 +430,30 @@ document.getElementById("csvInput").addEventListener("change", async (e) => {
     refresh();
   } catch (err) {
     alert(err.message);
+  }
+});
+
+document.getElementById("loadSheetBtn").addEventListener("click", async () => {
+  const rawUrl = document.getElementById("sheetUrl").value.trim();
+  if (!rawUrl) {
+    setSheetStatus("Paste a Google Sheet URL first.", "status-error");
+    return;
+  }
+
+  setSheetStatus("Loading CSV from Google Sheet...");
+
+  try {
+    const csvUrl = googleSheetUrlToCsvUrl(rawUrl);
+    const res = await fetch(csvUrl);
+    if (!res.ok) {
+      throw new Error(`Google Sheet request failed (${res.status}). Ensure the sheet is shared for viewing.`);
+    }
+    const text = await res.text();
+    state.runs = parseCsvRuns(text);
+    refresh();
+    setSheetStatus(`Loaded ${state.runs.length} runs from Google Sheet.`, "status-success");
+  } catch (err) {
+    setSheetStatus(err.message, "status-error");
   }
 });
 
