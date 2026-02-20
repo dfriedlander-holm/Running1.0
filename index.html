@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Running1.0 Tracker</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>Running1.0 Tracker</h1>
+      <p>Strava-powered running analytics dashboard for GitHub Pages.</p>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>Data Source</h2>
+        <div class="grid two">
+          <label>
+            Strava access token
+            <input id="stravaToken" type="password" placeholder="Paste access token" />
+          </label>
+          <div class="actions">
+            <button id="loadStravaBtn">Load from Strava</button>
+            <div id="stravaStatus" class="hint"></div>
+          </div>
+        </div>
+        <p class="hint">
+          Paste an <strong>access token</strong> (raw token or <code>Bearer &lt;token&gt;</code>). If this still 401s, verify your
+          app's granted scopes include <code>activity:read</code> or <code>activity:read_all</code>.
+        </p>
+
+        <div class="grid two">
+          <label>
+            Google Sheets link (CSV fallback)
+            <input id="sheetUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." />
+          </label>
+          <div class="actions">
+            <button id="loadSheetBtn">Load from Google Sheets</button>
+            <div id="sheetStatus" class="hint"></div>
+          </div>
+        </div>
+        <p class="hint">
+          Share your sheet as "Anyone with the link can view". Required columns: <code>date</code>,
+          <code>distance_mi</code> (or <code>distance_km</code>/<code>distance_m</code>), optional <code>moving_time_sec</code>.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Targets</h2>
+        <div class="grid three">
+          <label>
+            Pace target A (mi/day)
+            <input id="paceA" type="number" value="1.9" min="0" step="0.1" />
+          </label>
+          <label>
+            Pace target B (mi/day)
+            <input id="paceB" type="number" value="2.3" min="0" step="0.1" />
+          </label>
+          <label>
+            Predictor distance (mi)
+            <input id="predictDistance" type="number" value="10" min="0" step="0.1" />
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Key Metrics</h2>
+        <div id="metrics" class="metrics"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Weekly Breakdown Remaining</h2>
+        <div id="weeklyBreakdown"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Monthly Comparison</h2>
+        <div id="monthlyComparison"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Pace Analysis</h2>
+        <div id="paceAnalysis"></div>
+      </section>
+
+      <section class="panel charts">
+        <div>
+          <h3>7-Day Rolling Mileage</h3>
+          <canvas id="rollingChart"></canvas>
+        </div>
+        <div>
+          <h3>Distance Histogram (Current Year)</h3>
+          <canvas id="histogramChart"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <small>This is a client-side app. Keep your Strava token private and temporary.</small>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
