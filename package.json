@@ -1,0 +1,9 @@
+{
+  "name": "running-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Running analytics dashboard with Strava and Google Sheets support",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

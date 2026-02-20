@@ -18,8 +18,8 @@
         <h2>Data Source</h2>
         <div class="grid two">
           <label>
-            Strava access token
-            <input id="stravaToken" type="password" placeholder="Paste temporary token" />
+            Strava access token or code
+            <input id="stravaToken" type="password" placeholder="Paste token, code, callback URL, or JSON" />
           </label>
           <div class="actions">
             <button id="loadStravaBtn">Load from Strava</button>
@@ -27,7 +27,9 @@
           </div>
         </div>
         <p class="hint">
-          Paste a short-lived <strong>access token</strong> (not an authorization code). If you see a 401, the token is usually expired, missing run/activity scopes, or copied incorrectly. Tokens are never stored.
+          Paste either a Strava <strong>access token</strong> or <strong>authorization code</strong>. Authorization code
+          exchange requires the local backend endpoint (<code>/api/strava/exchange</code>) to be running with your
+          Strava client credentials.
         </p>
         <div class="grid two">
           <label>

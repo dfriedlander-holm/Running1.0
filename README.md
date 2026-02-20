@@ -4,8 +4,9 @@ Running1.0 is a static running analytics dashboard that you can host on GitHub P
 
 ## What it does
 
-- Pulls your run activities from Strava (using a pasted temporary access token).
+- Pulls your run activities from Strava (using a pasted access token or OAuth authorization code).
 - Supports CSV import from your spreadsheet as a fallback.
+- Supports loading runs directly from a Google Sheet URL.
 - Calculates:
   - monthly mileage
   - monthly remaining mileage (for two adjustable daily pace targets)
@@ -21,32 +22,53 @@ Running1.0 is a static running analytics dashboard that you can host on GitHub P
 
 ## Run locally
 
-Open `index.html` directly in your browser, or serve with a local static server:
+Run the local server so the OAuth code exchange endpoint is available:
 
 ```bash
-python -m http.server 8080
+npm start
 ```
 
 Then open <http://localhost:8080>.
+
+### Strava backend environment variables
+
+Set these before starting the server:
+
+```bash
+export STRAVA_CLIENT_ID=your_client_id
+export STRAVA_CLIENT_SECRET=your_client_secret
+# Optional: include if your Strava app requires redirect URI matching during token exchange
+export STRAVA_REDIRECT_URI=http://localhost:8080
+```
+
+Then run:
+
+```bash
+npm start
+```
 
 ## Deploy to GitHub Pages
 
 - Push this repository to GitHub.
 - In repository settings, enable GitHub Pages from the `main` branch root.
 - Your dashboard will be available at `https://<username>.github.io/<repo>/`.
+- GitHub Pages does not run the local backend endpoint, so Strava authorization-code exchange will not work there
+  unless you host `/api/strava/exchange` separately.
 
 ## Strava note
 
-This app is fully client-side and does not store your token. Use short-lived tokens and keep them private.
+The Strava code exchange is handled by a local backend endpoint (`POST /api/strava/exchange`) so your client secret
+stays server-side. Access tokens are still short-lived.
 
 ## Strava 401 troubleshooting
 
-If the app shows a `401 Unauthorized` error:
+If Strava loading fails:
 
-- Make sure you pasted an **access token** (not the OAuth authorization code).
-- Re-authenticate and generate a fresh token (Strava access tokens are short-lived).
+- If using an authorization code, confirm the local backend is running and has `STRAVA_CLIENT_ID` and
+  `STRAVA_CLIENT_SECRET`.
+- For `401 Unauthorized`, re-authenticate and use a fresh token/code.
 - Ensure your Strava app requested activity scopes (`activity:read` or `activity:read_all`).
-- You can paste either raw token text or `Bearer <token>`; the app now normalizes both.
+- You can paste raw token text, `Bearer <token>`, callback URL, JSON token payload, or `code`.
 
 
 
@@ -79,4 +101,3 @@ git push origin work
 ```
 
 Tip: if your PR is based on the wrong target branch, change the PR base branch in GitHub first.
-

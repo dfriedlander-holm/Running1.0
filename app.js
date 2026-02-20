@@ -50,17 +50,29 @@ function parseStravaCredentialInput(rawToken) {
     if (maybeUrl.searchParams.get("code")) {
       return {
         token: "",
-        error:
-          "That value is a Strava authorization code, not an access token. Exchange the code for an access token first, then paste the access token here.",
+        code: maybeUrl.searchParams.get("code"),
+        maybeToken: unprefixed,
+        warning: "Detected Strava authorization code. Exchanging for an access token...",
       };
     }
   } catch (_err) {}
 
-  if (/(\?|&)code=/.test(unprefixed) || /^code=/.test(unprefixed)) {
+  const codeMatch = unprefixed.match(/(?:^|[?&])code=([^&]+)/);
+  if (codeMatch) {
     return {
       token: "",
-      error:
-        "That value is a Strava authorization code, not an access token. Exchange the code for an access token first, then paste the access token here.",
+      code: decodeURIComponent(codeMatch[1]),
+      maybeToken: unprefixed,
+      warning: "Detected Strava authorization code. Exchanging for an access token...",
+    };
+  }
+
+  if (/^[a-zA-Z0-9]{20,}$/.test(unprefixed) && !unprefixed.includes(".")) {
+    return {
+      token: "",
+      code: unprefixed,
+      maybeToken: unprefixed,
+      warning: "Detected Strava authorization code. Exchanging for an access token...",
     };
   }
 
@@ -111,6 +123,34 @@ function googleSheetUrlToCsvUrl(rawUrl) {
   const fromHash = new URLSearchParams(url.hash.replace(/^#/, "")).get("gid");
   const gid = fromQuery || fromHash || "0";
   return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+}
+
+async function exchangeStravaCodeForToken(code) {
+  let res;
+  try {
+    res = await fetch("/api/strava/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+  } catch (_err) {
+    throw new Error("Could not reach /api/strava/exchange. Run the local backend server and try again.");
+  }
+
+  let body = {};
+  try {
+    body = await res.json();
+  } catch (_err) {}
+
+  if (!res.ok) {
+    throw new Error(body.error || `Strava code exchange failed (${res.status}).`);
+  }
+
+  const token = body.access_token;
+  if (!token) {
+    throw new Error("Code exchange succeeded but no access_token was returned.");
+  }
+  return token;
 }
 
 async function fetchStravaRuns(token) {
@@ -437,28 +477,33 @@ document.getElementById("loadStravaBtn").addEventListener("click", async () => {
   const rawToken = document.getElementById("stravaToken").value;
   const loadBtn = document.getElementById("loadStravaBtn");
   const parsed = parseStravaCredentialInput(rawToken);
-  const token = parsed.token;
+  let token = parsed.token;
 
-  if (parsed.error) {
-    setStravaStatus(parsed.error, "status-error");
-    return;
-  }
-
-  if (!token) {
+  if (!token && !parsed.code) {
     setStravaStatus("Add a Strava access token first.", "status-error");
     return;
   }
 
-  if (parsed.warning) {
-    setStravaStatus(parsed.warning);
-  } else if (rawToken.trim().toLowerCase().startsWith("bearer ")) {
+  if (rawToken.trim().toLowerCase().startsWith("bearer ")) {
     setStravaStatus("Removed optional 'Bearer' prefix from pasted token.");
+  } else if (parsed.warning) {
+    setStravaStatus(parsed.warning);
   }
 
   loadBtn.disabled = true;
-  setStravaStatus("Loading runs from Strava...");
+  setStravaStatus(parsed.code ? "Exchanging Strava code for access token..." : "Loading runs from Strava...");
 
   try {
+    if (parsed.code) {
+      try {
+        token = await exchangeStravaCodeForToken(parsed.code);
+        setStravaStatus("Code exchanged. Loading runs from Strava...");
+      } catch (exchangeErr) {
+        if (!parsed.maybeToken) throw exchangeErr;
+        token = parsed.maybeToken;
+        setStravaStatus("Code exchange failed, trying pasted value as access token...");
+      }
+    }
     const runs = await fetchStravaRuns(token);
     state.runs = runs.sort((a, b) => parseDate(a.date) - parseDate(b.date));
     refresh();
